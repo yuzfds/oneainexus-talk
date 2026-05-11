@@ -1,0 +1,60 @@
+{
+  "id": "oneainexus-openclaw-connector",
+  "kind": "channel",
+  "channels": [
+    "oneainexus"
+  ],
+  "name": "Oneainexus Chat",
+  "description": "OpenClaw channel plugin for oneainexus-openclaw-chat",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "channelConfigs": {
+    "oneainexus": {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "accounts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "apiEndpoint": {
+                  "type": "string"
+                },
+                "wsPath": {
+                  "type": "string"
+                },
+                "clientId": {
+                  "type": "string"
+                },
+                "clientSecret": {
+                  "type": "string"
+                },
+                "dmPolicy": {
+                  "type": "string"
+                },
+                "allowFrom": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

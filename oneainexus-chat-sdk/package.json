@@ -1,0 +1,32 @@
+{
+  "name": "@oneainexus/chat-sdk",
+  "version": "1.0.2",
+  "description": "Oneainexus Chat SDK for independent chat clients",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "publish": "node ./scripts/publish.js"
+  },
+  "keywords": [
+    "chat",
+    "sdk",
+    "oneainexus"
+  ],
+  "author": "oneainexus",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.18.1",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "eventemitter3": "^5.0.4",
+    "isomorphic-ws": "^5.0.0",
+    "ws": "^8.20.0"
+  }
+}

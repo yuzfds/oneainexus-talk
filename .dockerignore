@@ -1,0 +1,9 @@
+# .dockerignore
+**/node_modules
+**/.nuxt
+**/.output
+**/.git
+**/.codex-logs
+**/dist
+**/.env
+**/*.log

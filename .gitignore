@@ -1,0 +1,49 @@
+# Node dependencies
+node_modules/
+
+# Build outputs
+dist/
+.output/
+.nuxt/
+.nitro/
+.cache/
+*.tsbuildinfo
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage/
+*.lcov
+
+# Playwright MCP
+.playwright-mcp/
+
+# Temp directories
+_tmp_*/
+
+# Codex logs
+.codex-logs/
+
+# Data
+.data/
+
+# Windows PowerShell cache
+Microsoft/

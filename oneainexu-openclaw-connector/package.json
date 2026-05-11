@@ -1,0 +1,74 @@
+{
+  "name": "@oneainexus/openclaw-connector",
+  "version": "0.1.20",
+  "description": "OpenClaw channel plugin for oneainexus-openclaw-chat",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "openclaw.plugin.json",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run typecheck",
+    "publish": "node ./scripts/publish.js"
+  },
+  "dependencies": {
+    "@oneainexus/chat-sdk": "^1.0.2",
+    "@buape/carbon": "^0.14.0",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.4.5"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "openclaw",
+    "channel-plugin",
+    "oneainexus"
+  ],
+  "author": "oneainexus",
+  "license": "ISC",
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "install": {
+      "npmSpec": "@oneainexus/openclaw-connector",
+      "localPath": "extensions/oneainexus",
+      "defaultChoice": "npm"
+    },
+    "setupEntry": "./dist/setup-entry.js",
+    "channel": {
+      "id": "oneainexus",
+      "label": "Oneainexus Chat",
+      "selectionLabel": "Oneainexus Chat",
+      "docsPath": "/channels/oneainexus",
+      "docsLabel": "oneainexus",
+      "blurb": "Bridge OpenClaw with oneainexus-openclaw-chat via the Oneainexus Chat SDK.",
+      "aliases": [
+        "oneainexus-chat"
+      ],
+      "order": 80,
+      "quickstartAllowFrom": false
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "openclaw": "^2026.4.5",
+    "typescript": "^6.0.2"
+  }
+}

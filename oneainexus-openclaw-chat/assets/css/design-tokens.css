@@ -1,0 +1,66 @@
+:root {
+  /* Colors */
+  --oc-primary: #ff4d4f;
+  --oc-primary-hover: #ff3333;
+  --oc-primary-light: #ff999a;
+  --oc-bg-main: #ffffff;
+  --oc-bg-sub: #fef9f9;
+  --oc-border-light: #ffe8e8;
+  
+  /* Text Colors */
+  --oc-text-primary: #333333;
+  --oc-text-regular: #666666;
+  --oc-text-secondary: #999999;
+  --oc-text-disabled: #cccccc;
+
+  /* Spacing Tokens */
+  --oc-spacing-xs: 4px;
+  --oc-spacing-sm: 8px;
+  --oc-spacing-md: 16px;
+  --oc-spacing-lg: 24px;
+  --oc-spacing-xl: 32px;
+  --oc-spacing-2xl: 48px;
+
+  /* Border Radius */
+  --oc-radius-sm: 8px;
+  --oc-radius-md: 12px;
+  --oc-radius-lg: 16px;
+  --oc-radius-xl: 24px;
+
+  /* Shadows */
+  --oc-shadow-sm: 0 2px 8px rgba(255, 77, 79, 0.08);
+  --oc-shadow-md: 0 4px 16px rgba(255, 77, 79, 0.06);
+  --oc-shadow-focus: 0 4px 16px rgba(255, 77, 79, 0.12);
+  
+  /* Typography */
+  --oc-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --oc-font-size-xs: 12px;
+  --oc-font-size-sm: 14px;
+  --oc-font-size-md: 15px;
+  --oc-font-size-lg: 16px;
+  --oc-font-size-xl: 28px;
+  --oc-font-size-2xl: 32px;
+}
+
+/* Base styles */
+body {
+  background-color: var(--oc-bg-sub);
+  color: var(--oc-text-primary);
+  font-family: var(--oc-font-family);
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #f0f0f0;
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #e0e0e0;
+}
