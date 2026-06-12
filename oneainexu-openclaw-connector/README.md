@@ -1,14 +1,16 @@
-# oneainexu-openclaw-connector
+# @oneainexus/openclaw-connector
 
-`oneainexu-openclaw-connector` 是一个 OpenClaw channel 插件，用于把 OpenClaw 和 `oneainexus-openclaw-chat` 通过 Oneainexus Chat SDK 连接起来。
+`@oneainexus/openclaw-connector` 是一个 OpenClaw channel 插件，用于把 OpenClaw 和 `agent-app-backend` 通过 Oneainexus Chat SDK 连接起来。
 
 ## 功能
 
-- 提供 `oneainexus` channel
-- 支持 direct chat
+- 提供 `oneainexus` channel（支持 direct chat）
 - 支持文本与媒体消息透传
+- 支持文件附件发送（图片、文档、压缩包）
 - 支持基于 `session:<sessionId>` 的目标路由
 - 支持多账号配置
+- 支持私聊策略（`dmPolicy`）与来源白名单（`allowFrom`）
+- 阻断式流输出（`blockStreaming`）
 
 ## 安装
 
@@ -77,9 +79,9 @@ openclaw plugins install @oneainexus/openclaw-connector
         "default": {
           "enabled": true,
           "apiEndpoint": "https://aicloud.oneainexus.cn:30013/",
-          "wsPath": "/oneainexus-talk/api/_ws.ws",
+          "wsPath": "/agent-app/api/v1/user/chat/ws/sdk",
           "clientId": "oc_be6109dd63b74511",
-          "clientSecret": "0b4f49acf0a1bf1fb901c3eca7f7fb8fc8254eab5b9e2cc2d24a469851bbb159",
+          "clientSecret": "0b4f49acf0a1bf1fb901c3eca7f7fb8fc8254eab5b9e2cc2d24a469851bbb159"
         }
       }
     }
@@ -107,7 +109,7 @@ openclaw plugins install @oneainexus/openclaw-connector
           "apiEndpoint": "https://chat-staging.example.com",
           "clientId": "staging-client-id",
           "clientSecret": "staging-client-secret",
-          "wsPath": "/oneainexus-talk/api/_ws.ws"
+          "wsPath": "/agent-app/api/v1/user/chat/ws/sdk"
         }
       }
     }
@@ -126,7 +128,7 @@ Oneainexus Chat 网关的 HTTP 基地址。
 WebSocket 路径，可选。默认值是：
 
 ```txt
-/oneainexus-talk/api/_ws.ws
+/agent-app/api/v1/user/chat/ws/sdk
 ```
 
 ### `clientId`
@@ -165,18 +167,28 @@ session:abc123
 
 如果只传 `abc123`，插件也会自动规范化为 `session:abc123`。
 
+## 支持的消息动作
+
+| 动作 | 说明 |
+|------|------|
+| `send` | 发送文本消息（可附带媒体 URL） |
+| `sendAttachment` | 发送附件 |
+| `upload-file` | 上传文件并发送（支持图片、文档、压缩包等） |
+
+支持的媒体类型：图片（png、jpg、gif、webp、svg）、文档（pdf、txt、md、docx、xlsx、pptx）、压缩包（zip）。
+
 ## 运行流程
 
 1. OpenClaw 启动并加载插件
 2. 插件读取 `channels.oneainexus.accounts`
-3. 连接到 Oneainexus Chat 网关
+3. 为每个启用的账号启动 SDK Worker，连接到 Oneainexus Chat 网关
 4. 接收来自 SDK 的 `chat` 消息
 5. 将消息路由到 OpenClaw 对话会话
 6. 把 OpenClaw 的回复再发回对应的 `sessionId`
 
 ## 发布后接入建议
 
-1. 先确认 `oneainexus-openclaw-chat` 服务地址可访问
+1. 先确认 `agent-app-backend` 服务地址可访问
 2. 准备一组有效的 `clientId` 和 `clientSecret`
 3. 在 OpenClaw 运行环境中安装本插件
 4. 在 OpenClaw 主配置中增加 `channels.oneainexus.accounts.default`
@@ -207,7 +219,10 @@ session:<sessionId>
 ## 开发
 
 ```bash
+# 安装依赖
 npm install
+
+# 构建（会先构建依赖的 chat-sdk，再构建本插件）
 npm run build
 ```
 

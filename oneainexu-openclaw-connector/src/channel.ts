@@ -25,7 +25,7 @@ const oneainexusPluginBase = {
       selectionLabel: 'Oneainexus Chat',
       docsPath: '/channels/oneainexus',
       docsLabel: 'oneainexus',
-      blurb: 'Bridge OpenClaw with oneainexus-openclaw-chat via a persistent SDK client.',
+      blurb: 'Bridge OpenClaw with agent-app-backend via a persistent SDK client.',
       aliases: ['oneainexus-chat'],
       order: 80,
       quickstartAllowFrom: false,

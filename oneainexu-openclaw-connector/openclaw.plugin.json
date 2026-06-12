@@ -5,7 +5,7 @@
     "oneainexus"
   ],
   "name": "Oneainexus Chat",
-  "description": "OpenClaw channel plugin for oneainexus-openclaw-chat",
+  "description": "OpenClaw channel plugin for agent-app-backend",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

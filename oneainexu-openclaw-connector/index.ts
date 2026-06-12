@@ -13,7 +13,7 @@ const entry: {
 } = defineChannelPluginEntry({
   id: 'oneainexus-openclaw-connector',
   name: 'Oneainexus Chat',
-  description: 'Bridge OpenClaw with oneainexus-openclaw-chat via the Oneainexus Chat SDK.',
+  description: 'Bridge OpenClaw with agent-app-backend via the Oneainexus Chat SDK.',
   plugin: oneainexusPlugin,
   setRuntime: runtimeStore.setRuntime,
 });

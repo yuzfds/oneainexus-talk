@@ -11,7 +11,7 @@ import { deleteOpenClawSession } from './session-delete.js';
 import { MessageDedup } from './dedup.js';
 import { emitSecurityWarnings } from './security.js';
 
-const DEFAULT_WS_PATH = '/oneainexus-talk/api/_ws';
+const DEFAULT_WS_PATH = '/agent-app/api/v1/user/chat/ws/sdk';
 
 function resolveWsPath(apiEndpoint: string, wsPath?: string): string {
   const raw = wsPath?.trim();

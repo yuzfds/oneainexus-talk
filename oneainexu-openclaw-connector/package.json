@@ -1,13 +1,13 @@
 {
   "name": "@oneainexus/openclaw-connector",
-  "version": "0.1.20",
-  "description": "OpenClaw channel plugin for oneainexus-openclaw-chat",
-  "type": "module",
+  "version": "0.1.21",
+  "description": "OpenClaw channel plugin for agent-app-backend",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
       "default": "./dist/index.js"
     }
   },
@@ -17,7 +17,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npm --prefix ../oneainexus-chat-sdk run build && tsup",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "npm run typecheck",
     "publish": "node ./scripts/publish.js"
@@ -58,7 +58,7 @@
       "selectionLabel": "Oneainexus Chat",
       "docsPath": "/channels/oneainexus",
       "docsLabel": "oneainexus",
-      "blurb": "Bridge OpenClaw with oneainexus-openclaw-chat via the Oneainexus Chat SDK.",
+      "blurb": "Bridge OpenClaw with agent-app-backend via the Oneainexus Chat SDK.",
       "aliases": [
         "oneainexus-chat"
       ],
@@ -69,6 +69,7 @@
   "devDependencies": {
     "@types/node": "^25.5.2",
     "openclaw": "^2026.4.5",
+    "tsup": "^8.5.0",
     "typescript": "^6.0.2"
   }
 }
