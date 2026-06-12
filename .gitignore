@@ -47,3 +47,6 @@ _tmp_*/
 
 # Windows PowerShell cache
 Microsoft/
+
+# npm config with secrets
+.npmrc
