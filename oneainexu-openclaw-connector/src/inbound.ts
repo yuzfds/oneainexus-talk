@@ -1,7 +1,8 @@
 ﻿import type { MessagePart, ReceivedMessage } from '@oneainexus/chat-sdk';
 import { resolveAgentWorkspaceDir } from 'openclaw/plugin-sdk/agent-runtime';
+import { randomUUID } from 'node:crypto';
 import type { OpenClawConfig, PluginRuntime, ReplyPayload } from 'openclaw/plugin-sdk/core';
-import { partToOpenClawMediaPath } from './media-bridge.js';
+import { partToOpenClawMedia, type OpenClawMediaPart } from './media-bridge.js';
 import { DEFAULT_ACCOUNT_ID } from './types.js';
 import {
   deliverReplyPayloadToSession,
@@ -14,11 +15,16 @@ import {
 import {
   sendStreamDone,
   sendStreamError,
-  sendStreamEvent,
 } from './outbound/stream.js';
+import {
+  activateToolEventSession,
+  completeToolEventSession,
+  sendToolStreamEvent,
+} from './tool-events.js';
 import { CHANNEL_ID, type SDKChatEnvelope, type SDKChatTurn } from './types.js';
 
 interface ReplyOptions {
+  runId?: string;
   suppressDefaultToolProgressMessages?: boolean;
   allowProgressCallbacksWhenSourceDeliverySuppressed?: boolean;
   onPartialReply: (payload: { text?: string; mediaUrl?: string; mediaUrls?: string[] }) => Promise<void>;
@@ -97,15 +103,29 @@ function extractTextFromParts(parts?: MessagePart[]): string {
   return parts
     .map((part) => {
       if (part.type === 'text') return part.text;
-      if (part.type === 'image') return part.alt || part.name || part.url;
-      return part.name || part.url;
+      if (part.type === 'image') return part.alt || part.name || '[image]';
+      return part.name || '[file]';
     })
     .filter(Boolean)
     .join('\n');
 }
 
+function extractPlainTextFromParts(parts?: MessagePart[]): string {
+  if (!parts?.length) return '';
+
+  return parts
+    .map((part) => (part.type === 'text' ? part.text : ''))
+    .filter(Boolean)
+    .join('\n');
+}
+
 function normalizeTurnContent(message: SDKChatTurn): string {
-  return message.content ?? extractTextFromParts(message.parts);
+  const content = message.content ?? extractPlainTextFromParts(message.parts);
+  if (content.trim()) {
+    return content;
+  }
+
+  return extractTextFromParts(message.parts);
 }
 
 function extractEnvelope(rawMessage: ReceivedMessage): SDKChatEnvelope {
@@ -243,10 +263,76 @@ function resolveLatestUserTurn(envelope: SDKChatEnvelope): SDKChatTurn | null {
   return null;
 }
 
+type InboundBuildLogger = {
+  info?: (message: string) => void;
+  warn?: (message: string) => void;
+};
+
+async function resolveInboundMediaParts(params: {
+  parts: Array<Extract<MessagePart, { type: 'image' | 'file' }>>;
+  runtime: PluginRuntime;
+  logger?: InboundBuildLogger;
+}): Promise<OpenClawMediaPart[]> {
+  const media: OpenClawMediaPart[] = [];
+
+  for (const part of params.parts) {
+    try {
+      media.push(await partToOpenClawMedia(part, params.runtime));
+    } catch (error) {
+      const label = part.type === 'image'
+        ? (part.alt || part.name || part.url)
+        : (part.name || part.url);
+      params.logger?.warn?.(`[connector] failed to prepare inbound attachment "${label}": ${String(error)}`);
+    }
+  }
+
+  return media;
+}
+
+function buildInboundMediaPayload(media: OpenClawMediaPart[]): Record<string, unknown> {
+  if (media.length === 0) return {};
+
+  const mediaPaths = media.map((item) => item.path);
+  const mediaTypes = media.map((item) => item.contentType).filter(Boolean);
+  const first = media[0];
+
+  return {
+    MediaPath: first?.path,
+    MediaType: first?.contentType,
+    MediaUrl: first?.path,
+    MediaPaths: mediaPaths,
+    MediaUrls: mediaPaths,
+    ...(mediaTypes.length > 0 ? { MediaTypes: mediaTypes } : {}),
+  };
+}
+
+function formatMediaReference(media: OpenClawMediaPart): string {
+  if (media.resourceType === 'image') {
+    return media.path;
+  }
+
+  const label = media.fileName ? `File: ${media.fileName}` : 'File';
+  return `[${label}: ${media.path}]`;
+}
+
+function appendMediaReferences(content: string, media: OpenClawMediaPart[]): string {
+  const references = media.map(formatMediaReference).filter(Boolean);
+  if (references.length === 0) return content;
+
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return references.join('\n');
+  }
+
+  return `${trimmed}\n\n${references.join('\n')}`;
+}
+
 async function buildInboundMessageContext(params: {
   rawMessage: ReceivedMessage;
   target: string;
   accountId: string;
+  runtime: PluginRuntime;
+  logger?: InboundBuildLogger;
 }) {
   const envelope = extractEnvelope(params.rawMessage);
   const latestUserTurn = resolveLatestUserTurn(envelope);
@@ -254,27 +340,35 @@ async function buildInboundMessageContext(params: {
     return null;
   }
 
-  const body = normalizeTurnContent(latestUserTurn);
-  if (!body.trim()) {
-    return null;
-  }
-
   const mediaParts = (latestUserTurn.parts ?? []).filter((part): part is Extract<MessagePart, { type: 'image' | 'file' }> =>
     part.type === 'image' || part.type === 'file',
   );
-  const mediaUrls = await Promise.all(mediaParts.map((part) => partToOpenClawMediaPath(part)));
-  const mediaTypes = mediaParts.map(
-    (part) => part.mimeType ?? (part.type === 'image' ? 'image/*' : 'application/octet-stream'),
-  );
+  const media = await resolveInboundMediaParts({
+    parts: mediaParts,
+    runtime: params.runtime,
+    ...(params.logger ? { logger: params.logger } : {}),
+  });
+  const rawBody = normalizeTurnContent(latestUserTurn);
+  const body = appendMediaReferences(rawBody, media);
+
+  if (!body.trim() && mediaParts.length === 0) {
+    return null;
+  }
+  if (!body.trim()) {
+    params.logger?.warn?.('[connector] inbound message skipped: no text and no readable attachments.');
+    return null;
+  }
+
+  const mediaPayload = buildInboundMediaPayload(media);
 
   return {
     body,
     msgContext: {
       Body: body,
       BodyForAgent: body,
-      RawBody: body,
-      BodyForCommands: body,
-      CommandBody: body,
+      RawBody: rawBody,
+      BodyForCommands: rawBody,
+      CommandBody: rawBody,
       CommandAuthorized: true,
       From: params.target,
       To: params.target,
@@ -289,7 +383,7 @@ async function buildInboundMessageContext(params: {
       OriginatingChannel: CHANNEL_ID,
       OriginatingTo: params.target,
       ExplicitDeliverRoute: true,
-      ...(mediaUrls.length > 0 ? { MediaUrls: mediaUrls, MediaTypes: mediaTypes } : {}),
+      ...mediaPayload,
     },
   };
 }
@@ -314,6 +408,8 @@ export async function handleInboundSdkChat(params: {
     rawMessage: params.rawMessage,
     target,
     accountId,
+    runtime: params.runtime,
+    logger,
   });
 
   if (!inbound) {
@@ -329,9 +425,11 @@ export async function handleInboundSdkChat(params: {
       id: target,
     },
   });
+  const routeAccountId = route.accountId ?? accountId;
 
   const ctxPayload = params.runtime.channel.reply.finalizeInboundContext({
     ...inbound.msgContext,
+    AccountId: routeAccountId,
     SessionKey: route.sessionKey,
   });
   const workspaceDir = resolveAgentWorkspaceDir(params.cfg, route.agentId);
@@ -353,13 +451,22 @@ export async function handleInboundSdkChat(params: {
       sessionKey: route.sessionKey,
       channel: CHANNEL_ID,
       to: target,
-      accountId,
+      accountId: routeAccountId,
     },
     onRecordError: (error) => {
       params.runtime.logging.getChildLogger({ plugin: CHANNEL_ID }).warn(
         `Failed to record inbound session for ${target}: ${String(error)}`,
       );
     },
+  });
+
+  const toolRunId = `oneainexus-${randomUUID()}`;
+  activateToolEventSession({
+    accountId: routeAccountId,
+    sessionId,
+    target,
+    sessionKey: route.sessionKey,
+    runId: toolRunId,
   });
 
   try {
@@ -369,6 +476,7 @@ export async function handleInboundSdkChat(params: {
     let lastToolName: string | undefined;
 
     const replyOptions: ReplyOptions = {
+      runId: toolRunId,
       suppressDefaultToolProgressMessages: false,
       allowProgressCallbacksWhenSourceDeliverySuppressed: true,
       onPartialReply: async (payload: { text?: string; mediaUrl?: string; mediaUrls?: string[] }) => {
@@ -382,7 +490,7 @@ export async function handleInboundSdkChat(params: {
         await noteSessionMediaFromWorkspace(sessionId, workspaceDir);
 
         await deliverReplyPayloadToSession({
-          accountId,
+          accountId: routeAccountId,
           target,
           payload,
           kind: 'block',
@@ -400,9 +508,10 @@ export async function handleInboundSdkChat(params: {
         lastToolName = payload.name?.trim() || lastToolName;
         const text = formatToolStartText(payload);
         if (!text) return;
-        await sendStreamEvent({
-          accountId,
+        await sendToolStreamEvent({
+          accountId: routeAccountId,
           target,
+          sessionKey: route.sessionKey,
           text,
           eventType: 'tool_start',
           eventData: {
@@ -447,9 +556,10 @@ export async function handleInboundSdkChat(params: {
 
         const text = formatItemEventText(payload);
         if (!text) return;
-        await sendStreamEvent({
-          accountId,
+        await sendToolStreamEvent({
+          accountId: routeAccountId,
           target,
+          sessionKey: route.sessionKey,
           text,
           eventType: 'tool_item',
           eventData: {
@@ -485,9 +595,10 @@ export async function handleInboundSdkChat(params: {
         noteSessionMediaFromText(sessionId, `${payload.output ?? ''}\n${text}`);
         await noteSessionMediaFromWorkspace(sessionId, workspaceDir);
         commandOutputDedupe.add(normalizeToolResultText(text));
-        await sendStreamEvent({
-          accountId,
+        await sendToolStreamEvent({
+          accountId: routeAccountId,
           target,
+          sessionKey: route.sessionKey,
           text,
           eventType: 'tool_output',
           eventData: {
@@ -514,9 +625,10 @@ export async function handleInboundSdkChat(params: {
         logger.debug?.('[connector] onPlanUpdate', payload);
         const text = formatPlanUpdateText(payload);
         if (!text) return;
-        await sendStreamEvent({
-          accountId,
+        await sendToolStreamEvent({
+          accountId: routeAccountId,
           target,
+          sessionKey: route.sessionKey,
           text,
           eventType: 'tool_item',
           eventData: {
@@ -547,9 +659,10 @@ export async function handleInboundSdkChat(params: {
         logger.debug?.('[connector] onApprovalEvent', payload);
         const text = formatApprovalEventText(payload);
         if (!text) return;
-        await sendStreamEvent({
-          accountId,
+        await sendToolStreamEvent({
+          accountId: routeAccountId,
           target,
+          sessionKey: route.sessionKey,
           text,
           eventType: 'tool_item',
           eventData: {
@@ -583,9 +696,10 @@ export async function handleInboundSdkChat(params: {
         logger.debug?.('[connector] onPatchSummary', payload);
         const text = formatPatchSummaryText(payload);
         if (!text) return;
-        await sendStreamEvent({
-          accountId,
+        await sendToolStreamEvent({
+          accountId: routeAccountId,
           target,
+          sessionKey: route.sessionKey,
           text,
           eventType: 'tool_output',
           eventData: {
@@ -628,7 +742,7 @@ export async function handleInboundSdkChat(params: {
         }
 
         await deliverReplyPayloadToSession({
-          accountId,
+          accountId: routeAccountId,
           target,
           payload: {
             ...payload,
@@ -663,7 +777,7 @@ export async function handleInboundSdkChat(params: {
             }
 
             await deliverReplyPayloadToSession({
-              accountId,
+              accountId: routeAccountId,
               target,
               payload: {
                 ...payload,
@@ -694,7 +808,7 @@ export async function handleInboundSdkChat(params: {
 
           await noteSessionMediaFromWorkspace(sessionId, workspaceDir);
           await deliverReplyPayloadToSession({
-            accountId,
+            accountId: routeAccountId,
             target,
             payload: nextPayload,
             kind: info.kind,
@@ -710,15 +824,20 @@ export async function handleInboundSdkChat(params: {
     });
 
     await sendStreamDone({
-      accountId,
+      accountId: routeAccountId,
       target,
       finishReason: envelope.stream === false ? 'stop' : 'stream_end',
     });
   } catch (error) {
     await sendStreamError({
-      accountId,
+      accountId: routeAccountId,
       target,
       error,
+    });
+  } finally {
+    completeToolEventSession({
+      sessionKey: route.sessionKey,
+      runId: toolRunId,
     });
   }
 }

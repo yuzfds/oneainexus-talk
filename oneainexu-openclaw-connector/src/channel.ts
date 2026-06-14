@@ -15,6 +15,7 @@ import { deliverReplyPayloadToSession } from './outbound/deliver.js';
 import { runtimeStore } from './runtime-store.js';
 import { startAccountWorker } from './sdk-worker.js';
 import { CHANNEL_ID, DEFAULT_DM_POLICY, type OneainexusAccount } from './types.js';
+import { CONNECTOR_VERSION_LABEL } from './version.js';
 
 const oneainexusPluginBase = {
   ...createChannelPluginBase<OneainexusAccount>({
@@ -107,7 +108,7 @@ oneainexusPlugin.messaging = {
     };
   },
   resolveOutboundSessionRoute: (params) => {
-    const { sessionId, normalizedTarget } = parseOneainexusTarget(params.target);
+    const { normalizedTarget } = parseOneainexusTarget(params.target);
     return buildChannelOutboundSessionRoute({
       cfg: params.cfg,
       agentId: params.agentId,
@@ -119,7 +120,6 @@ oneainexusPlugin.messaging = {
       chatType: 'direct',
       from: normalizedTarget,
       to: normalizedTarget,
-      threadId: sessionId,
       ...(params.accountId == null ? {} : { accountId: params.accountId }),
     });
   },
@@ -188,10 +188,16 @@ oneainexusPlugin.actions = {
 oneainexusPlugin.gateway = {
   startAccount: async (ctx) => {
     const runtime = runtimeStore.getRuntime();
+    const logger = runtime.logging.getChildLogger({ plugin: CHANNEL_ID, accountId: ctx.accountId });
+    logger.info(`Starting ${CONNECTOR_VERSION_LABEL} gateway account "${ctx.accountId}".`);
+
     const account = resolveOneainexusAccount({
       cfg: ctx.cfg as OpenClawConfig,
       accountId: ctx.accountId,
     });
+    logger.info(
+      `Resolved Oneainexus account "${account.accountId}": enabled=${account.enabled} configured=${account.configured}.`,
+    );
 
     await startAccountWorker({
       cfg: ctx.cfg as OpenClawConfig,

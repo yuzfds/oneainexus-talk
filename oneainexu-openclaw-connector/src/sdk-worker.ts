@@ -7,9 +7,11 @@ import type { ChannelAccountSnapshot, OpenClawConfig, PluginRuntime } from 'open
 import { CHANNEL_ID, type OneainexusAccount } from './types.js';
 import { handleInboundSdkChat } from './inbound.js';
 import { runtimeStore } from './runtime-store.js';
+import { createOpenClawSession } from './session-create.js';
 import { deleteOpenClawSession } from './session-delete.js';
 import { MessageDedup } from './dedup.js';
 import { emitSecurityWarnings } from './security.js';
+import { CONNECTOR_VERSION_LABEL } from './version.js';
 
 const DEFAULT_WS_PATH = '/agent-app/api/v1/user/chat/ws/sdk';
 
@@ -56,7 +58,13 @@ function isSessionDeleteMessage(
   return (rawMessage as { type?: string }).type === 'session_delete';
 }
 
-function resolveDeleteSessionId(rawMessage: ReceivedMessage & { data?: unknown }): string {
+function isSessionCreateMessage(
+  rawMessage: ReceivedMessage & { type: string; data?: unknown },
+): rawMessage is ReceivedMessage & { type: 'session_create'; data?: { sessionId?: string; title?: string } } {
+  return (rawMessage as { type?: string }).type === 'session_create';
+}
+
+function resolveControlSessionId(rawMessage: ReceivedMessage & { data?: unknown }): string {
   if (rawMessage.data && typeof rawMessage.data === 'object') {
     const candidate = (rawMessage.data as { sessionId?: unknown }).sessionId;
     if (typeof candidate === 'string' && candidate.trim()) {
@@ -68,7 +76,20 @@ function resolveDeleteSessionId(rawMessage: ReceivedMessage & { data?: unknown }
     return rawMessage.sessionId.trim();
   }
 
-  throw new Error('Session delete message is missing sessionId.');
+  throw new Error('SDK control message is missing sessionId.');
+}
+
+function resolveCreateSessionTitle(rawMessage: ReceivedMessage & { data?: unknown }): string | undefined {
+  if (!rawMessage.data || typeof rawMessage.data !== 'object') {
+    return undefined;
+  }
+
+  const candidate = (rawMessage.data as { title?: unknown }).title;
+  return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : undefined;
+}
+
+function resolveDeleteSessionId(rawMessage: ReceivedMessage & { data?: unknown }): string {
+  return resolveControlSessionId(rawMessage);
 }
 
 export async function startAccountWorker(params: {
@@ -88,6 +109,7 @@ export async function startAccountWorker(params: {
   }
 
   const logger = runtime.logging.getChildLogger({ plugin: CHANNEL_ID, accountId });
+  logger.info(`Starting ${CONNECTOR_VERSION_LABEL} SDK worker for account "${accountId}".`);
   const dedup = new MessageDedup({ ttlMs: 12 * 60 * 60 * 1000, maxEntries: 5000 });
 
   emitSecurityWarnings(cfg, logger);
@@ -154,7 +176,29 @@ export async function startAccountWorker(params: {
       return;
     }
 
+    if (isSessionCreateMessage(message)) {
+      try {
+        const sessionId = resolveControlSessionId(message);
+        const title = resolveCreateSessionTitle(message);
+        const result = await createOpenClawSession({
+          cfg,
+          runtime,
+          accountId,
+          sessionId,
+          ...(title ? { title } : {}),
+        });
+
+        logger.info(`Created OpenClaw session "${result.sessionKey}" for oneainexus session "${sessionId}"`, {
+          storePath: result.storePath,
+        });
+      } catch (error) {
+        logger.error(`Failed to create OpenClaw session from SDK control message: ${String(error)}`);
+      }
+      return;
+    }
+
     if (!isSessionDeleteMessage(message)) {
+      logger.debug?.(`Ignoring unsupported SDK message type "${message.type}"`);
       return;
     }
 

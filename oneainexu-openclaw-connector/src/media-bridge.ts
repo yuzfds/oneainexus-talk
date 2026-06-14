@@ -3,6 +3,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import type { MessagePart } from '@oneainexus/chat-sdk';
+import type { PluginRuntime } from 'openclaw/plugin-sdk/core';
 
 const MEDIA_DIR = path.join(tmpdir(), 'oneainexus-openclaw-connector-media');
 
@@ -148,7 +149,19 @@ async function persistMediaBuffer(params: {
   buffer: Buffer;
   fileName?: string | null;
   mimeType?: string | null;
+  runtime?: PluginRuntime | null;
 }): Promise<string> {
+  if (params.runtime?.channel?.media?.saveMediaBuffer) {
+    const saved = await params.runtime.channel.media.saveMediaBuffer(
+      params.buffer,
+      params.mimeType ?? undefined,
+      'inbound',
+      FETCH_REMOTE_MAX_BYTES,
+      params.fileName ?? undefined,
+    );
+    return saved.path;
+  }
+
   await ensureMediaDir();
 
   const baseName = sanitizeFileName(
@@ -197,6 +210,21 @@ async function fetchRemoteBuffer(url: string): Promise<{ buffer: Buffer; mimeTyp
 export async function partToOpenClawMediaPath(
   part: Extract<MessagePart, { type: 'image' | 'file' }>,
 ): Promise<string> {
+  return (await partToOpenClawMedia(part)).path;
+}
+
+export type OpenClawMediaPart = {
+  path: string;
+  contentType: string;
+  fileName?: string;
+  resourceType: 'image' | 'file';
+  size?: number;
+};
+
+export async function partToOpenClawMedia(
+  part: Extract<MessagePart, { type: 'image' | 'file' }>,
+  runtime?: PluginRuntime | null,
+): Promise<OpenClawMediaPart> {
   const normalizedUrl = normalizeMediaUrlInput(part.url);
   if (!normalizedUrl) {
     throw new Error('Empty media URL.');
@@ -207,23 +235,78 @@ export async function partToOpenClawMediaPath(
     if (!decoded) {
       throw new Error('Invalid data URL attachment.');
     }
-    return persistMediaBuffer({
+    const fileName = part.name || `attachment${inferExtensionFromMimeType(part.mimeType || decoded.mimeType)}`;
+    const contentType = part.mimeType || decoded.mimeType || resolveMimeType({ fileName }) || defaultMimeTypeForPart(part);
+    const savedPath = await persistMediaBuffer({
       buffer: decoded.buffer,
-      ...(part.name ? { fileName: part.name } : {}),
-      ...((part.mimeType || decoded.mimeType) ? { mimeType: part.mimeType || decoded.mimeType } : {}),
+      fileName,
+      mimeType: contentType,
+      ...(runtime ? { runtime } : {}),
     });
+    return buildOpenClawMediaPart(part, savedPath, contentType, fileName, decoded.buffer.length);
   }
 
   if (/^https?:\/\//i.test(normalizedUrl)) {
     const remote = await fetchRemoteBuffer(normalizedUrl);
-    return persistMediaBuffer({
+    const fileName = part.name || remote.fileName || inferFileNameFromUrl(normalizedUrl);
+    const contentType =
+      part.mimeType ||
+      remote.mimeType ||
+      resolveMimeType({
+        ...(fileName ? { fileName } : {}),
+        url: normalizedUrl,
+      }) ||
+      defaultMimeTypeForPart(part);
+    const savedPath = await persistMediaBuffer({
       buffer: remote.buffer,
-      ...((part.name || remote.fileName) ? { fileName: part.name || remote.fileName } : {}),
-      ...((part.mimeType || remote.mimeType) ? { mimeType: part.mimeType || remote.mimeType } : {}),
+      ...(fileName ? { fileName } : {}),
+      mimeType: contentType,
+      ...(runtime ? { runtime } : {}),
     });
+    return buildOpenClawMediaPart(part, savedPath, contentType, fileName, remote.buffer.length);
   }
 
-  return normalizeLocalPath(normalizedUrl);
+  const localPath = normalizeLocalPath(normalizedUrl);
+  const fileName = part.name || inferFileNameFromUrl(normalizedUrl) || path.basename(localPath);
+  const contentType =
+    part.mimeType ||
+    resolveMimeType({ fileName, url: localPath }) ||
+    defaultMimeTypeForPart(part);
+  if (runtime) {
+    try {
+      const buffer = await fs.readFile(localPath);
+      const savedPath = await persistMediaBuffer({
+        buffer,
+        fileName,
+        mimeType: contentType,
+        runtime,
+      });
+      return buildOpenClawMediaPart(part, savedPath, contentType, fileName, buffer.length);
+    } catch {
+      // Keep the previous behavior for paths the bridge cannot read directly.
+    }
+  }
+  return buildOpenClawMediaPart(part, localPath, contentType, fileName, 'size' in part ? part.size : undefined);
+}
+
+function defaultMimeTypeForPart(part: Extract<MessagePart, { type: 'image' | 'file' }>): string {
+  return part.type === 'image' ? 'image/*' : 'application/octet-stream';
+}
+
+function buildOpenClawMediaPart(
+  part: Extract<MessagePart, { type: 'image' | 'file' }>,
+  mediaPath: string,
+  contentType: string,
+  fileName?: string,
+  size?: number,
+): OpenClawMediaPart {
+  return {
+    path: mediaPath,
+    contentType,
+    ...(fileName ? { fileName: sanitizeFileName(fileName) } : {}),
+    resourceType: part.type,
+    ...(typeof size === 'number' && Number.isFinite(size) ? { size } : {}),
+  };
 }
 
 export async function mediaUrlToMessagePart(
